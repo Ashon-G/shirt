@@ -1,70 +1,52 @@
 "use client";
 
-import { useGLTF, useTexture } from "@react-three/drei";
+import { OrbitControls, OrthographicCamera } from "@react-three/drei";
+import { useLoader, useThree } from "@react-three/fiber";
+import SplineLoader from "@splinetool/loader";
 import * as THREE from "three";
-
-useGLTF.preload("/Soda-can.gltf");
-
-const flavorTextures = {
-  lemonLime: "/labels/lemon-lime.png",
-  grape: "/labels/grape.png",
-  blackCherry: "/labels/black-cherry.png",
-  strawberryLemonade: "/labels/strawberry-lemonade.png",
-  watermelon: "/labels/watermelon.png",
-};
-
-const metalMaterial = new THREE.MeshStandardMaterial({
-  roughness: 0.3,
-  metalness: 1,
-  color: "#bbbbbb",
-});
+import { useEffect } from "react";
 
 export type SodaCanProps = {
-  flavor?: keyof typeof flavorTextures;
   scale?: number;
 };
 
-export function SodaCan({
-  flavor = "blackCherry",
-  scale = 2,
-  ...props
-}: SodaCanProps) {
-  const { nodes } = useGLTF("/Soda-can.gltf");
+export function SodaCan({ scale = 2, ...props }: SodaCanProps) {
+  const splineScene = useLoader(
+    SplineLoader,
+    "https://prod.spline.design/PDPpJC3z1w9z6ds3/scene.splinecode",
+  );
+  const { camera, size, gl, scene } = useThree();
 
-  const labels = useTexture(flavorTextures);
+  useEffect(() => {
+    gl.shadowMap.enabled = true;
+    gl.shadowMap.type = THREE.PCFShadowMap;
+    scene.background = new THREE.Color("#18181a");
+    gl.setClearAlpha(0);
+  }, [gl, scene]);
 
-  // Fixes upside down labels
-  labels.strawberryLemonade.flipY = false;
-  labels.blackCherry.flipY = false;
-  labels.watermelon.flipY = false;
-  labels.grape.flipY = false;
-  labels.lemonLime.flipY = false;
-
-  const label = labels[flavor];
+  useEffect(() => {
+    if (camera instanceof THREE.OrthographicCamera) {
+      camera.left = size.width / -2;
+      camera.right = size.width / 2;
+      camera.top = size.height / 2;
+      camera.bottom = size.height / -2;
+      camera.updateProjectionMatrix();
+    }
+  }, [camera, size]);
 
   return (
-    <group {...props} dispose={null} scale={scale} rotation={[0, -Math.PI, 0]}>
-      <mesh
-        castShadow
-        receiveShadow
-        geometry={(nodes.cylinder as THREE.Mesh).geometry}
-        material={metalMaterial}
+    <group {...props} scale={scale}>
+      <OrthographicCamera
+        makeDefault
+        position={[0, 0, 0]}
+        near={-50000}
+        far={10000}
       />
-      <mesh
-        castShadow
-        receiveShadow
-        geometry={(nodes.cylinder_1 as THREE.Mesh).geometry}
-      >
-        <meshStandardMaterial roughness={0.15} metalness={0.7} map={label} />
-      </mesh>
-      <mesh
-        castShadow
-        receiveShadow
-        geometry={(nodes.Tab as THREE.Mesh).geometry}
-        material={metalMaterial}
-      />
+      <primitive object={splineScene} />
+      <OrbitControls enableDamping dampingFactor={0.125} />
     </group>
   );
 }
 
 SodaCan.displayName = "SodaCan";
+

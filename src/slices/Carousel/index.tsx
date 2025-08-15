@@ -2,11 +2,10 @@
 
 import { Bounded } from "@/components/Bounded";
 import FloatingCan from "@/components/FloatingCan";
-import { SodaCanProps } from "@/components/SodaCan";
 import { asText, Content } from "@prismicio/client";
 import { PrismicRichText, SliceComponentProps } from "@prismicio/react";
 import { Center, Environment, View } from "@react-three/drei";
-import { use, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import ArrowButton from "./ArrowButton";
 import { WavyCircles } from "./WavyCircles";
 import { Group } from "three";
@@ -14,11 +13,7 @@ import { Group } from "three";
 import gsap from "gsap";
 
 const SPINS_ON_CHANGE = 8;
-const FLAVORS: {
-  flavor: SodaCanProps["flavor"];
-  color: string;
-  name: string;
-}[] = [
+const FLAVORS = [
   { flavor: "blackCherry", color: "#710523", name: "Black Cherry" },
   { flavor: "grape", color: "#572981", name: "Grape Goodness" },
   { flavor: "lemonLime", color: "#164405", name: "Lemon Lime" },
@@ -28,7 +23,7 @@ const FLAVORS: {
     name: "Strawberry Lemonade",
   },
   { flavor: "watermelon", color: "#4B7002", name: "Watermelon Crush" },
-];
+] as const;
 
 /**
  * Props for `Carousel`.
@@ -141,7 +136,6 @@ const Carousel = ({ slice }: CarouselProps): JSX.Element => {
               ref={sodaCanRef}
               floatIntensity={0.3}
               rotationIntensity={1}
-              flavor={FLAVORS[currentFlavorIndex].flavor}
             />
           </Center>
 
