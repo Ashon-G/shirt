@@ -20,6 +20,7 @@
     "@prismicio/react": "^2.8.0",
     "@react-three/drei": "^9.112.0",
     "@react-three/fiber": "^8.17.7",
+    "@splinetool/loader": "^1.10.48",
     "clsx": "^2.1.1",
     "gsap": "^3.12.5",
     "next": "^14.2.4",
