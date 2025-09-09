@@ -2,25 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import Spline from '@splinetool/react-spline';
 
-/**
- * Exclusive Shirt Landing Page — Scroll-linked 3D motion
- *
- * This version ties rotation + position (slide left) + zoom (scale) directly to
- * the user's scroll progress through the stage. No snapping — it moves on every scroll.
- *
- * TS hygiene:
- * - Minimal runtime types for Spline nodes
- * - Explicit param/return types
- * - Uses `import.meta.env.MODE` (no Node types needed)
- * - Style objects typed with `css()` helper
- */
+const SCENE_URL = 'https://prod.spline.design/X3mVuq7DMvDa1yJB/scene.splinecode';
+const OBJECT_NAME = 'Orb'; // Update if your mesh name changes
 
-const SCENE_URL = 'https://prod.spline.design/PDPpJC3z1w9z6ds3/scene.splinecode';
-const OBJECT_NAME = 'male_tshirt'; // change if your mesh name is different
-
-// ————————————————————————————————————————————————————————————————
-// Minimal type surfaces for Spline runtime objects we touch
-// ————————————————————————————————————————————————————————————————
 type Vec3 = { x: number; y: number; z: number; set?: (x: number, y: number, z: number) => void };
 interface SplineNode { rotation?: Vec3; position?: Vec3; scale?: Vec3 }
 interface SplineAppLike {
@@ -28,149 +12,166 @@ interface SplineAppLike {
   _scene?: { children?: SplineNode[] };
 }
 
-// Pose for a section (rotation, position, scale)
-interface Pose { label: string; x: number; y: number; z: number; px: number; py: number; pz: number; s: number }
+interface Pose {
+  label: string;
+  x: number; y: number; z: number;
+  px: number; py: number; pz: number;
+  s: number;
+}
 
-export default function App() {
+export default function LandingPage() {
   const splineAppRef = useRef<SplineAppLike | null>(null);
   const shirtRef = useRef<SplineNode | null>(null);
   const stageRef = useRef<HTMLElement | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
 
-  const [isLoaded, setIsLoaded] = useState<boolean>(false);
+  const POSES = useMemo<Pose[]>(() => [
+    { label: 'front', x: 0, y: 0, z: 0, px: 0, py: 0, pz: 0, s: 1 },
+    { label: 'quarter-left', x: 0.06, y: Math.PI / 4, z: -0.04, px: -30, py: 0, pz: 0, s: 1.08 },
+    { label: 'side-left', x: 0, y: Math.PI / 2, z: 0, px: -60, py: 0, pz: 0, s: 1.18 },
+    { label: 'threeQuarter-left', x: -0.06, y: (3 * Math.PI) / 4, z: 0.04, px: -40, py: 0, pz: 0, s: 1.12 },
+    { label: 'back', x: 0, y: Math.PI, z: 0, px: -10, py: 0, pz: 0, s: 1.05 },
+  ], []);
 
-  // ————————————————————————————————————————————————————————————————
-  // Keyframes across the stage (0 → 1). Add/remove poses to change the path.
-  // ————————————————————————————————————————————————————————————————
-  const POSES = useMemo<Pose[]>(
-    () => [
-      { label: 'front',             x:  0.00,           y: 0.0,              z:  0.00,           px:   0, py: 0, pz: 0, s: 1.00 },
-      { label: 'quarter-left',      x:  0.06,           y: Math.PI / 4,      z: -0.04,           px: -30, py: 0, pz: 0, s: 1.08 },
-      { label: 'side-left',         x:  0.00,           y: Math.PI / 2,      z:  0.00,           px: -60, py: 0, pz: 0, s: 1.18 },
-      { label: 'threeQuarter-left', x: -0.06,           y: (3 * Math.PI) / 4, z:  0.04,           px: -40, py: 0, pz: 0, s: 1.12 },
-      { label: 'back',              x:  0.00,           y: Math.PI,          z:  0.00,           px: -10, py: 0, pz: 0, s: 1.05 },
-    ],
-    []
-  );
+  const prefersReducedMotion = (): boolean =>
+  (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) ?? false;
 
-  // ————————————————————————————————————————————————————————————————
-  // Helpers: setters, math, and scroll progress within the stage
-  // ————————————————————————————————————————————————————————————————
-  const prefersReduce = (): boolean =>
-    typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  const setRotation = (x: number, y: number, z: number): void => {
-    const t = shirtRef.current; if (!t?.rotation) return;
+  const setNodeVec3 = (node: SplineNode | null, key: 'rotation' | 'position' | 'scale', value: Vec3 | number) => {
+    if (!node) return;
     try {
-      typeof t.rotation.set === 'function' ? t.rotation.set(x, y, z) : (t.rotation.x = x, t.rotation.y = y, t.rotation.z = z);
+      if (key === 'scale' && typeof value === 'number') {
+        if (node.scale?.set) node.scale.set(value, value, value);
+        else if (node.scale) node.scale.x = node.scale.y = node.scale.z = value;
+      } else if (typeof value !== 'number') {
+        const target = node[key];
+        if (!target) return;
+        if (target.set) {
+  target.set(value.x, value.y, value.z);
+} else {
+  Object.assign(target, value);
+}
+
+      }
     } catch (e) {
-      if (import.meta.env.MODE !== 'production') console.warn('[3D] rotation set failed', e);
-    }
-  };
-  const setPosition = (x: number, y: number, z: number): void => {
-    const t = shirtRef.current; if (!t?.position) return;
-    try {
-      typeof t.position.set === 'function' ? t.position.set(x, y, z) : (t.position.x = x, t.position.y = y, t.position.z = z);
-    } catch (e) {
-      if (import.meta.env.MODE !== 'production') console.warn('[3D] position set failed', e);
-    }
-  };
-  const setScale = (s: number): void => {
-    const t = shirtRef.current; if (!t?.scale) return;
-    try {
-      typeof t.scale.set === 'function' ? t.scale.set(s, s, s) : (t.scale.x = s, t.scale.y = s, t.scale.z = s);
-    } catch (e) {
-      if (import.meta.env.MODE !== 'production') console.warn('[3D] scale set failed', e);
+      console.warn(`[3D] Failed to set ${key}`, e);
     }
   };
 
-  const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
-  const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+  const clamp01 = (v: number) => Math.min(Math.max(v, 0), 1);
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-  const getStageProgress = (): number => {
-    const el = stageRef.current; if (!el) return 0;
-    const r = el.getBoundingClientRect();
-    const vh = window.innerHeight || 1;
-    const total = Math.max(1, r.height - vh); // scrollable distance while sticky
-    const scrolled = clamp01((0 - r.top) / total); // 0 when stage top hits top; 1 at stage end
-    return scrolled;
-  };
 
-  // Return an interpolated pose for progress p ∈ [0,1]
-  const getPoseAt = (p: number): Pose => {
+  const getPoseAt = (progress: number): Pose => {
     const frames = POSES.length;
-    if (frames === 0) return { label: 'empty', x: 0, y: 0, z: 0, px: 0, py: 0, pz: 0, s: 1 };
+    if (!frames) return { label: 'empty', x: 0, y: 0, z: 0, px: 0, py: 0, pz: 0, s: 1 };
     if (frames === 1) return POSES[0];
 
-    const x = clamp01(p) * (frames - 1);
-    const i = Math.floor(x);
-    const t = clamp01(x - i);
-    const a = POSES[i];
-    const b = POSES[Math.min(i + 1, frames - 1)];
+    const pos = clamp01(progress) * (frames - 1);
+    const idx = Math.floor(pos);
+    const t = clamp01(pos - idx);
+    const a = POSES[idx];
+    const b = POSES[Math.min(idx + 1, frames - 1)];
     return {
-      label: `mix(${a.label},${b.label})` ,
+      label: `mix(${a.label},${b.label})`,
       x: lerp(a.x, b.x, t),
       y: lerp(a.y, b.y, t),
       z: lerp(a.z, b.z, t),
       px: lerp(a.px, b.px, t),
       py: lerp(a.py, b.py, t),
       pz: lerp(a.pz, b.pz, t),
-      s:  lerp(a.s,  b.s,  t),
+      s: lerp(a.s, b.s, t),
     };
   };
 
-  // Apply a pose immediately (no easing) so movement maps 1:1 to scroll
-  const applyPose = (pose: Pose): void => {
-    setRotation(pose.x, pose.y, pose.z);
-    setPosition(pose.px, pose.py, pose.pz);
-    setScale(pose.s);
+  const applyPose = (pose: Pose) => {
+    setNodeVec3(shirtRef.current, 'rotation', { x: pose.x, y: pose.y, z: pose.z });
+    setNodeVec3(shirtRef.current, 'position', { x: pose.px, y: pose.py, z: pose.pz });
+    setNodeVec3(shirtRef.current, 'scale', pose.s);
   };
 
-  // Scroll-linked update (rAF throttled)
   useEffect(() => {
-    if (prefersReduce()) return; // respect reduced motion
+  const getStageProgress = () => {
+    const el = stageRef.current;
+    if (!el) return 0;
+    const rect = el.getBoundingClientRect();
+    const vh = window.innerHeight || 1;
+    const scrollable = Math.max(1, rect.height - vh);
+    return clamp01((0 - rect.top) / scrollable);
+  };
 
-    let ticking = false;
-    const update = () => {
-      ticking = false;
-      const p = getStageProgress();
-      applyPose(getPoseAt(p));
+  const getPoseAt = (progress: number): Pose => {
+    const frames = POSES.length;
+    if (!frames) return { label: 'empty', x: 0, y: 0, z: 0, px: 0, py: 0, pz: 0, s: 1 };
+    if (frames === 1) return POSES[0];
+
+    const pos = clamp01(progress) * (frames - 1);
+    const idx = Math.floor(pos);
+    const t = clamp01(pos - idx);
+    const a = POSES[idx];
+    const b = POSES[Math.min(idx + 1, frames - 1)];
+    return {
+      label: `mix(${a.label},${b.label})`,
+      x: lerp(a.x, b.x, t),
+      y: lerp(a.y, b.y, t),
+      z: lerp(a.z, b.z, t),
+      px: lerp(a.px, b.px, t),
+      py: lerp(a.py, b.py, t),
+      pz: lerp(a.pz, b.pz, t),
+      s: lerp(a.s, b.s, t),
     };
-    const onScroll = () => {
-      if (ticking) return;
+  };
+
+  const applyPose = (pose: Pose) => {
+    setNodeVec3(shirtRef.current, 'rotation', { x: pose.x, y: pose.y, z: pose.z });
+    setNodeVec3(shirtRef.current, 'position', { x: pose.px, y: pose.py, z: pose.pz });
+    setNodeVec3(shirtRef.current, 'scale', pose.s);
+  };
+
+  if (prefersReducedMotion()) return;
+  let ticking = false;
+
+  const update = () => {
+    ticking = false;
+    applyPose(getPoseAt(getStageProgress()));
+  };
+
+  const onScroll = () => {
+    if (!ticking) {
       ticking = true;
       requestAnimationFrame(update);
-    };
+    }
+  };
 
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll);
-    // run once initially
-    onScroll();
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onScroll);
-    };
-  }, [POSES]);
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  onScroll();
 
-  // ————————————————————————————————————————————————————————————————
-  // Spline loading / object lookup
-  // ————————————————————————————————————————————————————————————————
-  const handleLoad = (splineApp: SplineAppLike) => {
-    splineAppRef.current = splineApp;
+  return () => {
+    window.removeEventListener('scroll', onScroll);
+    window.removeEventListener('resize', onScroll);
+  };
+}, [POSES]);
+
+
+
+    
+  const handleLoad = (app: SplineAppLike) => {
+    splineAppRef.current = app;
 
     const tryNames = [OBJECT_NAME, 'shirt', 'Tshirt', 'tshirt', 'Model', 'Mesh'];
     let found: SplineNode | undefined | null = null;
+
     for (const name of tryNames) {
-      found = splineApp.findObjectByName?.(name);
+      found = app.findObjectByName?.(name);
       if (found) break;
     }
-    if (!found && splineApp._scene?.children?.length) {
-      found = splineApp._scene.children.find((o: SplineNode) => !!o?.rotation);
+
+    if (!found && app._scene?.children?.length) {
+      found = app._scene.children.find(child => !!child?.rotation);
     }
 
-    shirtRef.current = found || null;
+    shirtRef.current = found ?? null;
     setIsLoaded(true);
-
-    // Initialize to p=0 pose
     applyPose(getPoseAt(0));
   };
 
