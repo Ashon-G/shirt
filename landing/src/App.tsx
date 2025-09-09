@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import Spline from '@splinetool/react-spline';
 
 const SCENE_URL = 'https://prod.spline.design/X3mVuq7DMvDa1yJB/scene.splinecode';
-const OBJECT_NAME = 'Orb'; // Update if your mesh name changes
+const MESH_NAMES = ['Orb', 'Hands']; // add your mesh names here
 
 type Vec3 = { x: number; y: number; z: number; set?: (x: number, y: number, z: number) => void };
-interface SplineNode { rotation?: Vec3; position?: Vec3; scale?: Vec3 }
+interface SplineNode { rotation?: Vec3; position?: Vec3; scale?: Vec3; name?: string }
 interface SplineAppLike {
   findObjectByName?: (name: string) => SplineNode | undefined | null;
   _scene?: { children?: SplineNode[] };
@@ -21,7 +21,7 @@ interface Pose {
 
 export default function LandingPage() {
   const splineAppRef = useRef<SplineAppLike | null>(null);
-  const shirtRef = useRef<SplineNode | null>(null);
+  const meshRefs = useRef<Record<string, SplineNode | null>>({});
   const stageRef = useRef<HTMLElement | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -83,11 +83,11 @@ export default function LandingPage() {
     };
   };
 
-  const applyPose = (pose: Pose) => {
-    setNodeVec3(shirtRef.current, 'rotation', { x: pose.x, y: pose.y, z: pose.z });
-    setNodeVec3(shirtRef.current, 'position', { x: pose.px, y: pose.py, z: pose.pz });
-    setNodeVec3(shirtRef.current, 'scale', pose.s);
-  };
+  const applyPose = useCallback((node: SplineNode, pose: Pose) => {
+    setNodeVec3(node, 'rotation', { x: pose.x, y: pose.y, z: pose.z });
+    setNodeVec3(node, 'position', { x: pose.px, y: pose.py, z: pose.pz });
+    setNodeVec3(node, 'scale', pose.s);
+  }, []);
 
   useEffect(() => {
   const getStageProgress = () => {
@@ -121,18 +121,15 @@ export default function LandingPage() {
     };
   };
 
-  const applyPose = (pose: Pose) => {
-    setNodeVec3(shirtRef.current, 'rotation', { x: pose.x, y: pose.y, z: pose.z });
-    setNodeVec3(shirtRef.current, 'position', { x: pose.px, y: pose.py, z: pose.pz });
-    setNodeVec3(shirtRef.current, 'scale', pose.s);
-  };
-
   if (prefersReducedMotion()) return;
   let ticking = false;
 
   const update = () => {
     ticking = false;
-    applyPose(getPoseAt(getStageProgress()));
+    const pose = getPoseAt(getStageProgress());
+    Object.values(meshRefs.current).forEach(node => {
+      if (node) applyPose(node, pose);
+    });
   };
 
   const onScroll = () => {
@@ -150,7 +147,7 @@ export default function LandingPage() {
     window.removeEventListener('scroll', onScroll);
     window.removeEventListener('resize', onScroll);
   };
-}, [POSES]);
+}, [POSES, applyPose]);
 
 
 
@@ -158,21 +155,21 @@ export default function LandingPage() {
   const handleLoad = (app: SplineAppLike) => {
     splineAppRef.current = app;
 
-    const tryNames = [OBJECT_NAME, 'shirt', 'Tshirt', 'tshirt', 'Model', 'Mesh'];
-    let found: SplineNode | undefined | null = null;
+    MESH_NAMES.forEach(name => {
+      const node =
+        app.findObjectByName?.(name) ??
+        app._scene?.children?.find(c => c.rotation && c?.name === name) ??
+        null;
+      meshRefs.current[name] = node;
+    });
 
-    for (const name of tryNames) {
-      found = app.findObjectByName?.(name);
-      if (found) break;
-    }
-
-    if (!found && app._scene?.children?.length) {
-      found = app._scene.children.find(child => !!child?.rotation);
-    }
-
-    shirtRef.current = found ?? null;
     setIsLoaded(true);
-    applyPose(getPoseAt(0));
+
+    // Apply initial poses
+    Object.keys(meshRefs.current).forEach(name => {
+      const node = meshRefs.current[name];
+      if (node) applyPose(node, getPoseAt(0));
+    });
   };
 
   return (
